@@ -1,0 +1,62 @@
+root ::= thinkBlock "\n" reflectionLine "\n" reflectionLine "\n" reframeLine "\n" supportLine
+
+# Support variables
+word ::= [a-z]{1,20}
+capitalizedWord ::= [A-Z][a-z]{0,19}
+sentence ::= word (" " word){0, 20} "."
+capitalizedSentence ::= capitalizedWord (" " word){0, 20} "."
+paragraph ::= capitalizedSentence (" " capitalizedSentence){0, 4}
+
+# Think block
+thinkBlock ::= "<think>\n" paragraph "\n1. " capitalizedSentence "\n2. " capitalizedSentence "\n3. " capitalizedSentence "\n4. " capitalizedSentence "\n</think>\n"
+
+# Reflection line
+reflectionLine ::= "- You " expressionVerb " " sentence
+
+expressionVerb ::= shareWord | emotionWord | communicationWord
+shareWord ::= "shared" | "mentioned"  | "described" | "talked about" | "noted"
+emotionWord ::= "felt" | "experienced" | "seemed" | "appeared" | "were feeling" | "sensed"
+communicationWord ::= "expressed" | "conveyed" | "showed" | "revealed" | "communicated" | "indicated" | "voiced"
+
+# Reframe line
+reframeLine ::= "- " reframeOpener " " sentence
+reframeOpener ::= allowOpener | breakingOpener | celebrateOpener | changeOpener | communicateOpener | considerOpener |
+                  embraceOpener | encourageOpener | engageOpener | exploreOpener | focusingOpener | hopeOpener |
+                  planOpener | practiceOpener | reflectOpener | remindOpener | settingOpener | smallStepsOpener |
+                  supportOpener | takingOpener |writingOpener
+
+allowOpener ::= "Allowing yourself" | "Acknowledging" | "Feeling"
+breakingOpener ::=  "Breaking free from" | "Breaking the cycle of" | "Breaking tasks into"
+celebrateOpener ::= "Celebrating small" | "Appreciating" | "Honoring" | "Recognizing even small"
+changeOpener ::= "Changing your" | "Shifting your" | "Transforming"
+communicateOpener ::= "Having an open" | "Discussing" | "Talking openly about" | "Communicating"
+considerOpener ::= "To better" | "To manage" | "To address" | "To cope with"
+embraceOpener ::= "Embracing the" | "Welcoming"
+encourageOpener ::= "Self-reflection can" | "Growth comes from" | "Learning to"
+engageOpener ::= "Engaging with" | "Engaging in"
+exploreOpener ::= "Exploring your" | "Trying" | "Discovering"
+focusingOpener ::= "Focusing on" | "Prioritizing" | "Concentrating on"
+hopeOpener ::= "Small steps can" | "Each day offers" | "Progress happens when"
+planOpener ::= "Creating a plan" | "Scheduling" | "Organizing" | "Preparing"
+practiceOpener ::= "Practicing self-care" | "Practicing mindfulness" | "Practicing relaxation"
+reflectOpener ::= "Reflecting on" | "Recognizing" | "Acknowledging"
+remindOpener ::= "Remembering that" | "Reminding yourself" | "Keeping in mind"
+settingOpener ::= "Setting aside" | "Setting clear" | "Setting boundaries" | "Setting realistic"
+smallStepsOpener ::= "Taking one day" | "Starting with" | "Beginning with"
+supportOpener ::= "Support is available" | "Help is accessible"
+takingOpener ::= "Taking small steps" | "Taking time" | "Taking breaks" | "Taking care"
+writingOpener ::= "Writing down" | "Journaling"
+
+
+# Support line
+supportLine ::= "- " supportLineWithAudience | supportLineWithoutAudience
+supportLineWithAudience ::= supportActionWithAudience " " supportAudience " " sentence
+supportLineWithoutAudience ::= supportActionWithoutAudience " " sentence
+
+supportActionWithAudience ::= "Reaching out to" | "Talking to" | "Connecting with" | "Seeking out" | "Asking help from"
+supportActionWithoutAudience ::= "Consider" | "Try" | "Prioritize" | "Remember to"
+
+supportAudience ::= "a trusted friend" | "a family member" | "someone you trust" | "a therapist or counselor" |
+                    "a healthcare provider" | "a mental health professional" | "your support network" |
+                    "friends or family" | "a loved one" | "a trusted person"
+
