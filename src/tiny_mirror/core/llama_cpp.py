@@ -2,7 +2,6 @@
 
 import functools
 import json
-from collections.abc import Hashable
 from typing import Any, cast
 
 import pydantic
@@ -266,11 +265,11 @@ class LlmClient(pydantic.BaseModel):
 
     @property
     def _completion_endpoint(self) -> str:
-        return str(self.url) + "/completion"
+        return str(self.url) + "completion"
 
     @property
     def _embedding_endpoint(self) -> str:
-        return str(self.url) + "/embedding"
+        return str(self.url) + "embedding"
 
     @staticmethod
     def prepare_prompt(system_prompt: str, user_prompt: str) -> str:
@@ -300,7 +299,7 @@ class LlmClient(pydantic.BaseModel):
             if value is not None
         }
         response = self.cached_post_request(
-            self._embedding_endpoint, payload=json.dumps(data), expected_codes=(200,)
+            self._completion_endpoint, payload=json.dumps(data), expected_codes=(200,)
         )
 
         return cast("str", response.json()["content"])
@@ -326,7 +325,7 @@ class LlmClient(pydantic.BaseModel):
     @staticmethod
     @functools.lru_cache(maxsize=1024)
     def cached_post_request(
-        endpoint: str, payload: Hashable, *, expected_codes: tuple[int] | None = None
+        endpoint: str, payload: str, *, expected_codes: tuple[int] | None = None
     ) -> requests.Response:
         """Runs a request and caches the response.
 
@@ -343,11 +342,12 @@ class LlmClient(pydantic.BaseModel):
         Raises:
             RuntimeError: If an unexpected HTTP code is returned.
         """
-        response = requests.post(endpoint, json=payload, timeout=60)
+        response = requests.post(endpoint, data=payload, timeout=60)
         if expected_codes is not None and response.status_code not in expected_codes:
             msg = (
-                f"Llama.cpp returned {response.status_code}, "
-                f"expected one of {', '.join(str(code) for code in expected_codes)}"
+                f"Endpoint POST {endpoint} returned {response.status_code}, "
+                f"expected one of: {', '.join(str(code) for code in expected_codes)}. "
+                f"Got message: {response.text} for payload {payload}."
             )
             raise RuntimeError(msg)
 
