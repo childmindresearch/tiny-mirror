@@ -269,7 +269,7 @@ class LlmClient(pydantic.BaseModel):
 
     @property
     def _embedding_endpoint(self) -> str:
-        return str(self.url) + "embedding"
+        return str(self.url) + "v1/embeddings"
 
     @staticmethod
     def prepare_prompt(system_prompt: str, user_prompt: str) -> str:
@@ -319,11 +319,10 @@ class LlmClient(pydantic.BaseModel):
             expected_codes=(200,),
         )
 
-        embeddings = response.json()[0]["embedding"]
-        return tuple([sum(col) / len(col) for col in zip(*embeddings, strict=True)])
+        return tuple(response.json()["data"][0]["embedding"])
 
     @staticmethod
-    @functools.lru_cache(maxsize=1024)
+    @functools.lru_cache(maxsize=2048)
     def cached_post_request(
         endpoint: str, payload: str, *, expected_codes: tuple[int] | None = None
     ) -> requests.Response:

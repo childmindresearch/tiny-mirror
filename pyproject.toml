@@ -11,8 +11,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "notebook>=7.4.0",
+    "scikit-learn>=1.6.1",
+    "matplotlib>=3.10.1",
     "mirror-eval",
     "mypy>=1.15.0",
+    "numpy>=2.2.4",
+    "openai>=1.70.0",
+    "plotly>=6.0.1",
     "pytest>=8.3.5",
     "pytest-mock>=3.14.0",
     "ruff>=0.11.4",
