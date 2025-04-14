@@ -302,7 +302,7 @@ class LlmClient(pydantic.BaseModel):
             self._completion_endpoint, payload=json.dumps(data), expected_codes=(200,)
         )
 
-        return cast("str", response.json()["content"])
+        return cast("str", response["content"])
 
     def embedding(self, text: str) -> tuple[float, ...]:
         """Runs a embedding request via Llama.cpp.
@@ -319,13 +319,13 @@ class LlmClient(pydantic.BaseModel):
             expected_codes=(200,),
         )
 
-        return tuple(response.json()["data"][0]["embedding"])
+        return tuple(response["data"][0]["embedding"])
 
     @staticmethod
     @functools.lru_cache(maxsize=2048)
     def cached_post_request(
         endpoint: str, payload: str, *, expected_codes: tuple[int] | None = None
-    ) -> requests.Response:
+    ) -> dict[str, Any]:
         """Runs a request and caches the response.
 
         Args:
@@ -341,13 +341,17 @@ class LlmClient(pydantic.BaseModel):
         Raises:
             RuntimeError: If an unexpected HTTP code is returned.
         """
-        response = requests.post(endpoint, data=payload, timeout=60)
-        if expected_codes is not None and response.status_code not in expected_codes:
-            msg = (
-                f"Endpoint POST {endpoint} returned {response.status_code}, "
-                f"expected one of: {', '.join(str(code) for code in expected_codes)}. "
-                f"Got message: {response.text} for payload {payload}."
-            )
-            raise RuntimeError(msg)
+        with requests.Session() as session:
+            response = session.post(endpoint, data=payload, timeout=60)
+            if (
+                expected_codes is not None
+                and response.status_code not in expected_codes
+            ):
+                msg = (
+                    f"Endpoint POST {endpoint} returned {response.status_code}, "
+                    f"expected one of: {', '.join(str(code) for code in expected_codes)}."
+                    f"Got message: {response.text} for payload {payload}."
+                )
+                raise RuntimeError(msg)
 
-        return response
+            return cast("dict[str, Any]", response.json())
