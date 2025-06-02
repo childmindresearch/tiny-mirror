@@ -4,7 +4,6 @@ import dataclasses
 import math
 import pathlib
 from collections.abc import Sequence
-from typing import cast
 
 from tiny_mirror.core import llama_cpp
 
@@ -23,6 +22,7 @@ SYSTEM_PROMPT = (DATA_DIR / "prompt.txt").read_text()
 REFRAME_TEMPLATES = (DATA_DIR / "reframe_templates.txt").read_text().split("\n")
 SUPPORT_TEMPLATES = (DATA_DIR / "support_templates.txt").read_text().split("\n")
 GRAMMAR = (DATA_DIR / "prompt.gbnf").read_text()
+RERANK_LLAMA_ARG_UBATCH = 2048  # Physical batch size of the rerank server.
 
 
 @dataclasses.dataclass
@@ -40,23 +40,38 @@ class Similarity:
 class ConcerningSummary:
     """Creates summaries for concerning entries."""
 
-    def __init__(self, client: llama_cpp.LlmClient) -> None:
+    def __init__(
+        self,
+        llm_client: llama_cpp.LlmClient,
+        embedding_client: llama_cpp.LlmClient,
+        rerank_client: llama_cpp.LlmClient,
+    ) -> None:
         """Initializes the ConcerningSummary object.
 
         Args:
-            client: The llama cpp client to use.
+            llm_client: The LLM llama cpp client to use.
+            embedding_client: The embedding llama cpp client to use.
+            rerank_client: The rerank llama cpp client to use.
         """
-        self.client = client
+        self.llm_client = llm_client
+        self.embedding_client = embedding_client
+        self.rerank_client = rerank_client
 
-    def run(self, entry: str) -> str:
+    def run(self, entry: str, n_reframe_reranks: int = 5) -> str:
         """Runs the full concerning summary pipeline.
 
         This is intended as the production use-case. If you want to extract
         more granular data like template probabilities, use the other public
         methods instead.
 
+        Note that we only use as many characters as the reranker accepts tokens.
+        This could likely be far higher, but represents a safeguard against the most
+        extreme case wherein every character is a token.
+
         Args:
             entry: The journal entry to summarize.
+            n_reframe_reranks: The number of templates to consider in reranking reframe
+             templates.
 
         Returns:
             The summary.
@@ -67,10 +82,20 @@ class ConcerningSummary:
             "\n"
         )
 
-        reframe_similarities = self.find_similar(reframe, REFRAME_TEMPLATES)
-        best_reframe = reframe_similarities[0].sentence
-        support_similarities = self.find_similar(support, SUPPORT_TEMPLATES)
+        reframe_similarities = self.embed(reframe, REFRAME_TEMPLATES)
+        support_similarities = self.embed(support, SUPPORT_TEMPLATES)
         best_support = support_similarities[0].sentence
+
+        best_reframe_lines = [
+            reframe.sentence for reframe in reframe_similarities[:n_reframe_reranks]
+        ]
+        rerank_response = self.rerank(
+            entry,
+            best_reframe_lines,
+            clip_needle=True,
+            clip_haystack=False,
+        )
+        best_reframe = best_reframe_lines[rerank_response.results[0].index]
 
         return f"{reflection_1}\n{reflection_2}\n{best_reframe}\n{best_support}"
 
@@ -83,16 +108,16 @@ class ConcerningSummary:
         Returns:
             The summary.
         """
-        prompt = self.client.prepare_prompt(
+        prompt = self.llm_client.prepare_prompt(
             system_prompt=SYSTEM_PROMPT, user_prompt=entry
         )
         request = llama_cpp.CompletionRequest(
             prompt=prompt, grammar=GRAMMAR, **COMPLETION_PARAMETERS
         )
 
-        return cast("str", self.client.completion(request=request))
+        return self.llm_client.completion(request=request)
 
-    def find_similar(
+    def embed(
         self, needle: str, haystack: Sequence[str], *, preserve_order: bool = False
     ) -> tuple[Similarity, ...]:
         """Uses embeddings to find strings similar to the needle.
@@ -109,13 +134,13 @@ class ConcerningSummary:
         Returns:
             The similarity scores of the haystack.
         """
-        needle_embedding = self.client.embedding(needle)
+        needle_embedding = self.embedding_client.embedding(needle)
 
         similarities = [
             Similarity(
                 sentence=sentence,
                 similarity=_cosine_similarity(
-                    needle_embedding, self.client.embedding(sentence)
+                    needle_embedding, self.embedding_client.embedding(sentence)
                 ),
             )
             for sentence in haystack
@@ -124,6 +149,55 @@ class ConcerningSummary:
         if preserve_order:
             return tuple(similarities)
         return tuple(sorted(similarities, reverse=True))
+
+    def rerank(
+        self,
+        needle: str,
+        haystack: Sequence[str],
+        *,
+        clip_needle: bool = False,
+        clip_haystack: bool = False,
+        clip_size: int = RERANK_LLAMA_ARG_UBATCH,
+    ) -> llama_cpp.RerankResponse:
+        """Reranks the haystack.
+
+        Clipping may be necessary to prevent hitting the llama.cpp server's physical
+        batch size limit.
+
+        Args:
+            needle: The string to find similar strings to.
+            haystack: The strings to compare the needle to.
+            clip_needle: If true, clips the needle to the requested size.
+            clip_haystack: If true, clips each haystack element to the requested size.
+            clip_size: The size to clip to in tokens.
+
+        Returns:
+            The response from llama.cpp
+        """
+        if clip_needle:
+            needle = self.clip(self.rerank_client, needle, clip_size)
+
+        if clip_haystack:
+            haystack = [
+                self.clip(self.rerank_client, hay, clip_size) for hay in haystack
+            ]
+
+        return self.rerank_client.rerank(needle, haystack)
+
+    @staticmethod
+    def clip(client: llama_cpp.LlmClient, content: str, size: int) -> str:
+        """Clips the content to a specified number of tokens.
+
+        Args:
+            client: The llama.cpp client to tokenize with.
+            content: The string to clip.
+            size: The size to clip to in tokens.
+
+        Returns:
+            The clipped string.
+        """
+        response = client.tokenize(content, with_pieces=True)
+        return "".join([token.piece for token in response.tokens[:size]])
 
 
 def _cosine_similarity(vec1: Sequence[float], vec2: Sequence[float]) -> float:
