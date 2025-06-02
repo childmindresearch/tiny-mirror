@@ -1,11 +1,26 @@
 services:
+  bge-reranker-v2-m3-GGUF:
+    image: "ghcr.io/ggml-org/llama.cpp:server-cuda"
+    ports:
+      - "8002:8000"
+    volumes:
+      - ~/models:/models
+    command: ["--port", "8000", "-m", "/models/bge-reranker-v2-m3-Q8_0.gguf", "-c", "2048", "--ubatch-size", "2048", "--no-warmup", "--reranking"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
   llama_3_2_3b:
     image: "ghcr.io/ggml-org/llama.cpp:server-cuda"
     volumes:
       - ~/models:/models
     ports:
       - "8001:8000"
-    command: [ "-m", "/models/Llama-3.2-3B-Instruct-Q8_0.gguf", "--port", "8000", "--n-gpu-layers", "99", "--host", "0.0.0.0", "-n", "512" ]
+    command: [ "-m", "/models/Llama-3.2-3B-bf16-epoch1.gguf", "--port", "8000", "--n-gpu-layers", "99", "--host", "0.0.0.0", "-n", "512" ]
     deploy:
       resources:
         reservations:

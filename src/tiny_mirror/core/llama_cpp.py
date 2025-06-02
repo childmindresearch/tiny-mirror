@@ -2,7 +2,8 @@
 
 import functools
 import json
-from typing import Any, cast
+from collections.abc import Sequence
+from typing import Any, Literal, cast, overload
 
 import pydantic
 import requests
@@ -254,6 +255,65 @@ class CompletionRequest(pydantic.BaseModel):
     )
 
 
+class RerankRequest(pydantic.BaseModel):
+    """Definition of a request to llama.cpp POST /rerank."""
+
+    model: str
+    query: str
+    top_n: int
+    documents: tuple[str, ...]
+
+
+class RerankUsage(pydantic.BaseModel):
+    """Total token usage of the request."""
+
+    prompt_tokens: int
+    total_tokens: int
+
+
+class RerankResults(pydantic.BaseModel):
+    """Score for every document."""
+
+    index: int
+    relevance_score: float
+
+
+class RerankResponse(pydantic.BaseModel):
+    """Response from llama.cpp POST /rerank."""
+
+    model: str
+    object: str
+    usage: RerankUsage
+    results: tuple[RerankResults, ...]
+
+
+class TokenizeRequest(pydantic.BaseModel):
+    """Request to the /tokenize endpoint."""
+
+    content: str
+    add_special: bool = False
+    with_pieces: bool = False
+
+
+class Token(pydantic.BaseModel):
+    """A token in the /tokenize response."""
+
+    id: int
+    piece: str
+
+
+class TokenizeResponseNoPieces(pydantic.BaseModel):
+    """Response from the /tokenize endpoint."""
+
+    tokens: tuple[int, ...]
+
+
+class TokenizeResponseWithPieces(pydantic.BaseModel):
+    """Response from the /tokenize endpoint."""
+
+    tokens: tuple[Token, ...]
+
+
 class LlmClient(pydantic.BaseModel):
     """A Llama CPP Large Language Model .
 
@@ -270,6 +330,14 @@ class LlmClient(pydantic.BaseModel):
     @property
     def _embedding_endpoint(self) -> str:
         return str(self.url) + "v1/embeddings"
+
+    @property
+    def _rerank_endpoint(self) -> str:
+        return str(self.url) + "rerank"
+
+    @property
+    def _tokenize_endpoint(self) -> str:
+        return str(self.url) + "tokenize"
 
     @staticmethod
     def prepare_prompt(system_prompt: str, user_prompt: str) -> str:
@@ -320,6 +388,72 @@ class LlmClient(pydantic.BaseModel):
         )
 
         return tuple(response["data"][0]["embedding"])
+
+    # When with_pieces is True, return a response with pieces.
+    @overload
+    def tokenize(
+        self,
+        content: str,
+        *,
+        add_special: bool = ...,
+        with_pieces: Literal[True] = ...,
+    ) -> TokenizeResponseWithPieces: ...
+
+    # When with_pieces is False, return a response without pieces.
+    @overload
+    def tokenize(
+        self,
+        content: str,
+        *,
+        add_special: bool = ...,
+        with_pieces: Literal[False] = ...,
+    ) -> TokenizeResponseNoPieces: ...
+
+    def tokenize(
+        self, content: str, *, add_special: bool = False, with_pieces: bool = False
+    ) -> TokenizeResponseNoPieces | TokenizeResponseWithPieces:
+        """Tokenizes the content.
+
+        Args:
+            content: The text to tokenize.
+            add_special: Whether to add special tokens.
+            with_pieces: Whether to include the token's text in the response.
+
+        Returns:
+            The response from the /tokenize endpoint.
+        """
+        response = self.cached_post_request(
+            self._tokenize_endpoint,
+            payload=TokenizeRequest(
+                content=content,
+                add_special=add_special,
+                with_pieces=with_pieces,
+            ).model_dump_json(),
+            expected_codes=(200,),
+        )
+
+        if with_pieces:
+            return TokenizeResponseWithPieces.model_validate_json(json.dumps(response))
+        return TokenizeResponseNoPieces.model_validate_json(json.dumps(response))
+
+    def rerank(self, query: str, documents: Sequence[str]) -> RerankResponse:
+        """Runs a embedding request via Llama.cpp.
+
+        Args:
+            query: The text to compare to.
+            documents: The candidates for similarity.
+
+        Returns:
+            The embedding.
+        """
+        response = self.cached_post_request(
+            self._rerank_endpoint,
+            payload=RerankRequest(
+                model="unused", query=query, top_n=len(documents), documents=documents
+            ).model_dump_json(),
+            expected_codes=(200,),
+        )
+        return RerankResponse.model_validate_json(json.dumps(response))
 
     @staticmethod
     @functools.lru_cache(maxsize=2048)
