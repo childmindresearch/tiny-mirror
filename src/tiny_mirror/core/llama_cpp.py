@@ -225,7 +225,7 @@ class CompletionRequest(pydantic.BaseModel):
         description="Return the raw generated token ids in the tokens field.",
     )
     samplers: list[str] = pydantic.Field(
-        ["dry", "top_k", "tfs_z", "top_p", "min_p", "xtc", "temperature"],
+        ["dry", "top_k", "typ_p", "top_p", "min_p", "xtc", "temperature"],
         description="The order the samplers should be applied in.",
     )
     timings_per_token: bool = pydantic.Field(
@@ -282,7 +282,9 @@ class LlmClient(pydantic.BaseModel):
         Returns:
             A formatted prompt.
         """
-        return f"<system>{system_prompt}</system>\n\n<user>{user_prompt}</user>"
+        return f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
+{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
 
     def completion(self, request: CompletionRequest) -> str:
         """Runs a completion request via Llama.cpp.
