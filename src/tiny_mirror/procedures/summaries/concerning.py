@@ -4,7 +4,7 @@ import dataclasses
 import math
 import pathlib
 from collections.abc import Sequence
-from typing import cast
+from typing import Any, cast
 
 from tiny_mirror.core import llama_cpp
 
@@ -16,6 +16,7 @@ COMPLETION_PARAMETERS = {
         [323, False],  # Disable " and".
         [477, False],  # Disable " or".
     ],
+    "temperature": 0.4,
 }
 
 DATA_DIR = pathlib.Path(__file__).parent / "data"
@@ -40,13 +41,19 @@ class Similarity:
 class ConcerningSummary:
     """Creates summaries for concerning entries."""
 
-    def __init__(self, client: llama_cpp.LlmClient) -> None:
+    def __init__(
+        self,
+        llm_client: llama_cpp.LlmClient,
+        embedding_client: llama_cpp.LlmClient,
+    ) -> None:
         """Initializes the ConcerningSummary object.
 
         Args:
-            client: The llama cpp client to use.
+            llm_client: The llama cpp LLM client to use.
+            embedding_client: The llama cpp embedding client.
         """
-        self.client = client
+        self.llm_client = llm_client
+        self.embedding_client = embedding_client
 
     def run(self, entry: str) -> str:
         """Runs the full concerning summary pipeline.
@@ -74,23 +81,33 @@ class ConcerningSummary:
 
         return f"{reflection_1}\n{reflection_2}\n{best_reframe}\n{best_support}"
 
-    def create_summary(self, entry: str) -> str:
+    def create_summary(
+        self,
+        entry: str,
+        system_prompt: str = SYSTEM_PROMPT,
+        grammar: str = GRAMMAR,
+        params: dict[str, Any] | None = None,
+    ) -> str:
         """Creates the entry's summary.
 
         Args:
             entry: The journal entry to summarize.
+            system_prompt: The system prompt to use.
+            grammar: The GBNF grammar.
+            params: Other parameters for llama.cpp, see llama_cpp.CompletionRequest.
 
         Returns:
             The summary.
         """
-        prompt = self.client.prepare_prompt(
-            system_prompt=SYSTEM_PROMPT, user_prompt=entry
-        )
-        request = llama_cpp.CompletionRequest(
-            prompt=prompt, grammar=GRAMMAR, **COMPLETION_PARAMETERS
-        )
+        if params is None:
+            params = COMPLETION_PARAMETERS
 
-        return cast("str", self.client.completion(request=request))
+        prompt = self.llm_client.prepare_prompt(
+            system_prompt=system_prompt, user_prompt=entry
+        )
+        request = llama_cpp.CompletionRequest(prompt=prompt, grammar=grammar, **params)
+
+        return cast("str", self.llm_client.completion(request=request))
 
     def find_similar(
         self, needle: str, haystack: Sequence[str], *, preserve_order: bool = False
@@ -109,13 +126,13 @@ class ConcerningSummary:
         Returns:
             The similarity scores of the haystack.
         """
-        needle_embedding = self.client.embedding(needle)
+        needle_embedding = self.embedding_client.embedding(needle)
 
         similarities = [
             Similarity(
                 sentence=sentence,
                 similarity=_cosine_similarity(
-                    needle_embedding, self.client.embedding(sentence)
+                    needle_embedding, self.embedding_client.embedding(sentence)
                 ),
             )
             for sentence in haystack
